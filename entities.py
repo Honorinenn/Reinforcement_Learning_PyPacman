@@ -50,6 +50,9 @@ class Wall(pygame.sprite.Sprite):
 
         self.rect = self.image.get_rect(topleft=(x, y))
 
+    def draw(self, surface):
+        surface.blit(self.image, self.rect)
+
 
 class Pellet(pygame.sprite.Sprite):
     def __init__(self, x, y):
@@ -57,6 +60,9 @@ class Pellet(pygame.sprite.Sprite):
         self.image = pygame.Surface((CELL_SIZE, CELL_SIZE), pygame.SRCALPHA)
         pygame.draw.circle(self.image, WHITE, (CELL_SIZE // 2, CELL_SIZE // 2), 4)
         self.rect = self.image.get_rect(topleft=(x, y))
+
+    def draw(self, surface):
+        surface.blit(self.image, self.rect)
 
 
 class Pacman(pygame.sprite.Sprite):
@@ -86,14 +92,15 @@ class Pacman(pygame.sprite.Sprite):
 
     def update(self, keys, walls):
         # Handle input and set the next direction
-        if keys[pygame.K_LEFT]:
-            self.next_direction = pygame.Vector2(-1, 0)
-        elif keys[pygame.K_RIGHT]:
-            self.next_direction = pygame.Vector2(1, 0)
-        elif keys[pygame.K_UP]:
-            self.next_direction = pygame.Vector2(0, -1)
-        elif keys[pygame.K_DOWN]:
-            self.next_direction = pygame.Vector2(0, 1)
+        if keys:  # keys is an empty dict from the agent.
+            if keys[pygame.K_LEFT]:
+                self.next_direction = pygame.Vector2(-1, 0)
+            elif keys[pygame.K_RIGHT]:
+                self.next_direction = pygame.Vector2(1, 0)
+            elif keys[pygame.K_UP]:
+                self.next_direction = pygame.Vector2(0, -1)
+            elif keys[pygame.K_DOWN]:
+                self.next_direction = pygame.Vector2(0, 1)
 
         # Try to change direction
         if self.next_direction != self.direction:
@@ -155,7 +162,9 @@ class Ghost(pygame.sprite.Sprite):
     def __init__(self, x, y, ghost_type, ghost_paths, fps):
         super().__init__()
         self.image = pygame.transform.scale(
-            pygame.image.load(ghost_paths[ghost_type][0]).convert_alpha(),
+            pygame.image.load(
+                ghost_paths[list(ghost_paths.keys())[0]][0]
+            ).convert_alpha(),
             (CELL_SIZE, CELL_SIZE),
         )
         self.rect = self.image.get_rect(topleft=(x, y))
@@ -182,7 +191,7 @@ class Ghost(pygame.sprite.Sprite):
     def bfs(self, start, goal, walls):
         wall_positions = {
             (w.rect.x // CELL_SIZE, (w.rect.y - SCORE_AREA_HEIGHT) // CELL_SIZE)
-            for w in walls
+            for w in walls.sprites()
         }
         queue = deque([(start, [])])
         visited = {start}
@@ -213,7 +222,7 @@ class Ghost(pygame.sprite.Sprite):
         current_grid_pos = self.get_grid_pos()
         wall_positions = {
             (w.rect.x // CELL_SIZE, (w.rect.y - SCORE_AREA_HEIGHT) // CELL_SIZE)
-            for w in walls
+            for w in walls.sprites()
         }
 
         goal = (pacman_grid_x, pacman_grid_y)
