@@ -19,6 +19,3 @@ bin-release/
 
 # cache files
 __pycache__/
-
-# DQN training files
-runs/

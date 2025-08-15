@@ -154,6 +154,55 @@ class GameManager:
         self.has_won = False
         self._load_game_layout()
 
+    # Add to GameManager
+    def get_grid(self, px=None, py=None):
+        # integer grid coords for pacman center
+        if px is None or py is None:
+            px = self.pacman.rect.centerx // CELL_SIZE
+            py = (self.pacman.rect.centery - SCORE_AREA_HEIGHT) // CELL_SIZE
+
+        W, H = GRID_WIDTH, GRID_HEIGHT
+        pellets = [[0] * W for _ in range(H)]
+        walls = [[0] * W for _ in range(H)]
+        ghosts = [[0] * W for _ in range(H)]
+
+        for p in self.pellets:
+            x = p.rect.centerx // CELL_SIZE
+            y = (p.rect.centery - SCORE_AREA_HEIGHT) // CELL_SIZE
+            if 0 <= x < W and 0 <= y < H:
+                pellets[y][x] = 1
+
+        for w in self.walls:
+            x = w.rect.x // CELL_SIZE
+            y = (w.rect.y - SCORE_AREA_HEIGHT) // CELL_SIZE
+            if 0 <= x < W and 0 <= y < H:
+                walls[y][x] = 1
+
+        for g in self.ghosts:
+            x = g.rect.centerx // CELL_SIZE
+            y = (g.rect.centery - SCORE_AREA_HEIGHT) // CELL_SIZE
+            if 0 <= x < W and 0 <= y < H:
+                ghosts[y][x] = 1
+
+        return pellets, walls, ghosts, (px, py)
+
+    def crop_egocentric(self, radius=3):
+        pellets, walls, ghosts, (px, py) = self.get_grid()
+        patch = []
+        for ch in (pellets, walls, ghosts):
+            band = []
+            for dy in range(-radius, radius + 1):
+                row = []
+                for dx in range(-radius, radius + 1):
+                    x, y = px + dx, py + dy
+                    val = 0
+                    if 0 <= y < GRID_HEIGHT and 0 <= x < GRID_WIDTH:
+                        val = ch[y][x]
+                    row.append(val)
+                band.extend(row)
+            patch.extend(band)  # flatten channels
+        return patch  # length = 3 * (2r+1)^2
+
     # --- Helper: nearest pellet distance (pixel manhattan) ---
     def nearest_pellet_distance(self):
         px, py = self.pacman.rect.centerx, self.pacman.rect.centery
