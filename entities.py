@@ -281,6 +281,7 @@ class Ghost(pygame.sprite.Sprite):
                 self.path.pop(0)
                 path_segment_completed = True
 
+        # Always recalculate path if stuck or path is empty
         if not self.path:
             self.path = self.bfs(current_grid_pos, goal, walls)
 
@@ -300,8 +301,14 @@ class Ghost(pygame.sprite.Sprite):
                 if distance > self.speed:
                     move_vector.normalize_ip()
                     move_vector *= self.speed
-                else:
-                    move_vector = move_vector
-
-                self.rect.x += move_vector.x
-                self.rect.y += move_vector.y
+                # Calculate intended new position
+                new_x = self.rect.x + move_vector.x
+                new_y = self.rect.y + move_vector.y
+                # Create a test rect for collision
+                test_rect = self.rect.copy()
+                test_rect.x = new_x
+                test_rect.y = new_y
+                # Only move if no wall collision
+                if not any(test_rect.colliderect(w.rect) for w in walls):
+                    self.rect.x = new_x
+                    self.rect.y = new_y

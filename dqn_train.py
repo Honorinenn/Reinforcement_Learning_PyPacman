@@ -11,24 +11,6 @@ import time
 from logger import TrainingLogger, EpisodeLog
 
 
-# def get_state(game_manager):
-#     """
-#     Converts the current game state into a feature vector for the DQN.
-#     """
-#     pacman = game_manager.pacman
-#     ghosts = game_manager.ghosts
-#     pellets = game_manager.pellets
-
-#     state_features = [pacman.rect.x, pacman.rect.y]
-
-#     for ghost in ghosts.sprites():
-#         state_features.append(ghost.rect.x)
-#         state_features.append(ghost.rect.y)
-
-#     state_features.append(len(pellets))
-#     return np.array(state_features, dtype=np.float32)
-
-
 def get_state(game_manager, radius=3):
     pac = game_manager.pacman
     ghosts = game_manager.ghosts
@@ -72,6 +54,10 @@ def train_agent():
     )
     global_step = 0
 
+    # Track win rate.
+    win_rate_window = 100
+    win_history = []
+
     for episode in range(num_episodes):
         game_manager.reset()
         state = get_state(game_manager)
@@ -113,6 +99,27 @@ def train_agent():
         # Update the target network every 'target_update_frequency' episodes
         if episode % target_update_frequency == 0:
             agent.update_target_network()
+
+        # Check for win and update win history.
+        if game_manager.has_won:
+            win_history.append(1)
+        else:
+            win_history.append(0)
+
+        # Keep the win history to the size of the window.
+        if len(win_history) > win_rate_window:
+            win_history.pop(0)
+
+        # Calculate and log the current win rate.
+        current_win_rate = (sum(win_history) / len(win_history)) * 100
+        print(f"Episode: {episode+1}, Win Rate: {current_win_rate:.2f}%")
+
+        # Stop training if a 100% win rate is achieved.
+        if current_win_rate == 100 and len(win_history) == win_rate_window:
+            print(
+                f"100% win rate achieved over the last {win_rate_window} episodes! Stopping training."
+            )
+            break
 
         # --- metrics & logging ---
         duration = time.time() - t0

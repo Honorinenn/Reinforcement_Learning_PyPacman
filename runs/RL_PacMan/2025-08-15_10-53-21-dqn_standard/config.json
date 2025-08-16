@@ -1,0 +1,15 @@
+{
+  "algorithm": "DQN",
+  "architecture": "standard",
+  "batch_size": 64,
+  "episodes": 20000,
+  "epsilon_decay": 0.995,
+  "epsilon_min": 0.01,
+  "epsilon_start": 1.0,
+  "gamma": 0.95,
+  "learning_rate": 0.001,
+  "memory_size": 10000,
+  "state_size": 158,
+  "target_update_freq": 10,
+  "use_double_dqn": true
+}

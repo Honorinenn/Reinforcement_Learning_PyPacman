@@ -63,6 +63,11 @@ def get_state_for_agent(game_manager, agent_type="q_learning"):
         local_patch = game_manager.crop_egocentric(radius=3)
         state_features.extend(local_patch)
 
+        # Pad state_features to length 158 if necessary
+        if len(state_features) < 158:
+            state_features.extend([0.0] * (158 - len(state_features)))
+        elif len(state_features) > 158:
+            state_features = state_features[:158]
         return np.array(state_features, dtype=np.float32)
 
 

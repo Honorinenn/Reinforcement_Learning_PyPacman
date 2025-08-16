@@ -89,6 +89,10 @@ def train_q_learning_agent():
     print(f"Discount factor: {discount_factor}")
     print(f"Initial epsilon: {epsilon}")
 
+    # Track win rate.
+    win_rate_window = 100  # Number of episodes to calculate the win rate over.
+    win_history = []
+
     for episode in range(num_episodes):
         game_manager.reset()
         state = get_state(game_manager)
@@ -126,6 +130,27 @@ def train_q_learning_agent():
             if display_enabled:
                 game_manager.display()
                 clock.tick(game_manager.FPS)
+
+        # Check for win and update win history.
+        if game_manager.has_won:
+            win_history.append(1)
+        else:
+            win_history.append(0)
+
+        # Keep the win history to the size of the window.
+        if len(win_history) > win_rate_window:
+            win_history.pop(0)
+
+        # Calculate and log the current win rate.
+        current_win_rate = (sum(win_history) / len(win_history)) * 100
+        print(f"Episode: {episode+1}, Win Rate: {current_win_rate:.2f}%")
+
+        # Stop training if a 100% win rate is achieved.
+        if current_win_rate == 100 and len(win_history) == win_rate_window:
+            print(
+                f"100% win rate achieved over the last {win_rate_window} episodes! Stopping training."
+            )
+            break
 
         # Decay epsilon
         agent.decay_epsilon()

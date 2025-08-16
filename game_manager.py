@@ -25,8 +25,8 @@ HIGHSCORE_FILE = "highscore.txt"
 # === RL reward constants (tunable) ===
 STEP_PENALTY = -0.02
 PELLET_R = 1.0
-WIN_BONUS = 300.0
-DEATH_PENALTY = -200.0
+WIN_BONUS = 1000.0  # Increased from 300.0 for a stronger incentive
+DEATH_PENALTY = -1000.0  # Increased from -200.0 for a stronger penalty
 SHAPING_SCALE = 0.002  # tiny weight for distance shaping
 STUCK_LIMIT = 400  # steps since last pellet before early terminate
 
@@ -68,7 +68,7 @@ class GameManager:
         self.lives = 3
         self.game_over = False
         self.has_won = False
-        self.current_layout = LAYOUTS[10]
+        self.current_layout = LAYOUTS[1]
         self.high_score = self._load_highscore()
         self.font = pygame.font.Font(None, 36)
         self.win_font = pygame.font.Font(None, 72)
