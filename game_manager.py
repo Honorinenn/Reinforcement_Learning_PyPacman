@@ -121,6 +121,10 @@ class GameManager:
         for pos in pellet_positions:
             self.pellets.add(Pellet(pos[0], pos[1]))
         self.initial_pellet_count = len(self.pellets)
+
+        # Reset all ghosts to ensure they start fresh
+        for ghost in self.ghosts:
+            ghost.reset()
         # The following lines are removed from this method because they are
         # initialized in __init__ and will be reset in the `reset()` method.
         # self.visited.clear()
@@ -152,6 +156,11 @@ class GameManager:
         self.lives = 3
         self.game_over = False
         self.has_won = False
+
+        # Reset exploration bookkeeping variables
+        self.visited.clear()
+        self.steps_since_last_pellet = 0
+
         self._load_game_layout()
 
     # Add to GameManager

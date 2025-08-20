@@ -168,10 +168,12 @@ class Ghost(pygame.sprite.Sprite):
             (CELL_SIZE, CELL_SIZE),
         )
         self.rect = self.image.get_rect(topleft=(x, y))
+        self.pos = pygame.Vector2(self.rect.center)  # subpixel position
+        self.initial_pos = (x, y)
         self.speed = 2
         self.path = []
         self.ghost_type = ghost_type
-
+        self.fps = fps
         self.behavior_strategy = random.choice(["chase", "ambush", "random_wander"])
 
         if self.behavior_strategy == "random_wander":
@@ -179,13 +181,24 @@ class Ghost(pygame.sprite.Sprite):
             self.random_target_interval = fps * random.randint(2, 5)
             self.current_random_goal = None
 
+    def reset(self):
+        self.rect.topleft = self.initial_pos
+        self.pos = pygame.Vector2(self.rect.center)  # keep in sync
+        self.path = []
+        self.behavior_strategy = random.choice(["chase", "ambush", "random_wander"])
+
+        if self.behavior_strategy == "random_wander":
+            self.random_target_timer = 0
+            self.random_target_interval = self.fps * random.randint(2, 5)
+            self.current_random_goal = None
+
     def draw(self, surface):
         surface.blit(self.image, self.rect)
 
     def get_grid_pos(self):
         return (
-            round(self.rect.centerx / CELL_SIZE),
-            round((self.rect.centery - SCORE_AREA_HEIGHT) / CELL_SIZE),
+            int(self.rect.centerx // CELL_SIZE),
+            int((self.rect.centery - SCORE_AREA_HEIGHT) // CELL_SIZE),
         )
 
     def bfs(self, start, goal, walls):
@@ -215,11 +228,10 @@ class Ghost(pygame.sprite.Sprite):
         return []
 
     def update(self, walls, pacman, fps):
-        pacman_grid_x, pacman_grid_y = (
-            pacman.rect.centerx // CELL_SIZE,
-            (pacman.rect.centery - SCORE_AREA_HEIGHT) // CELL_SIZE,
-        )
+        pacman_grid_x = int(pacman.rect.centerx // CELL_SIZE)
+        pacman_grid_y = int((pacman.rect.centery - SCORE_AREA_HEIGHT) // CELL_SIZE)
         current_grid_pos = self.get_grid_pos()
+
         wall_positions = {
             (w.rect.x // CELL_SIZE, (w.rect.y - SCORE_AREA_HEIGHT) // CELL_SIZE)
             for w in walls.sprites()
@@ -228,87 +240,79 @@ class Ghost(pygame.sprite.Sprite):
         goal = (pacman_grid_x, pacman_grid_y)
 
         if self.behavior_strategy == "ambush":
-            if pacman.direction.y == -1:
-                target_x = pacman_grid_x - 4
-                target_y = pacman_grid_y - 4
-            else:
-                target_x = pacman_grid_x + int(pacman.direction.x * 4)
-                target_y = pacman_grid_y + int(pacman.direction.y * 4)
-
-            target_x = max(0, min(GRID_WIDTH - 1, target_x))
-            target_y = max(0, min(GRID_HEIGHT - 1, target_y))
-
-            temp_goal = (target_x, target_y)
-            if temp_goal in wall_positions:
-                goal = (pacman_grid_x, pacman_grid_y)
-            else:
-                goal = temp_goal
+            tx = pacman_grid_x + int(getattr(pacman.direction, "x", 0) * 4)
+            ty = pacman_grid_y + int(getattr(pacman.direction, "y", 0) * 4)
+            tx = max(0, min(GRID_WIDTH - 1, tx))
+            ty = max(0, min(GRID_HEIGHT - 1, ty))
+            if (tx, ty) not in wall_positions:
+                goal = (tx, ty)
 
         elif self.behavior_strategy == "random_wander":
+            if not hasattr(self, "random_target_timer"):
+                self.random_target_timer = 0
+                self.random_target_interval = fps * random.randint(2, 5)
+                self.current_random_goal = None
             self.random_target_timer += 1
-            if (
+            # Check if a new random goal is needed
+            need_new = (
                 self.random_target_timer >= self.random_target_interval
                 or self.current_random_goal is None
-                or (
-                    self.path
-                    and len(self.path) == 1
-                    and current_grid_pos == self.current_random_goal
-                )
-            ):
-                new_target_found = False
-                while not new_target_found:
-                    rand_x = random.randint(0, GRID_WIDTH - 1)
-                    rand_y = random.randint(0, GRID_HEIGHT - 1)
-                    if (rand_x, rand_y) not in wall_positions:
-                        self.current_random_goal = (rand_x, rand_y)
-                        new_target_found = True
+                or current_grid_pos == self.current_random_goal
+            )
+            if need_new:
+                # Find a new valid random goal
+                for _ in range(200):
+                    rx = random.randint(0, GRID_WIDTH - 1)
+                    ry = random.randint(0, GRID_HEIGHT - 1)
+                    if (rx, ry) in wall_positions:
+                        continue
+                    pth = self.bfs(current_grid_pos, (rx, ry), walls)
+                    if pth:
+                        self.current_random_goal = (rx, ry)
+                        break
                 self.random_target_timer = 0
-            goal = self.current_random_goal
+            if self.current_random_goal:
+                goal = self.current_random_goal
 
-        path_segment_completed = False
-        if self.path:
-            next_cell_grid = self.path[0]
-            target_pos_pixel = (
-                next_cell_grid[0] * CELL_SIZE + CELL_SIZE // 2,
-                next_cell_grid[1] * CELL_SIZE + CELL_SIZE // 2 + SCORE_AREA_HEIGHT,
-            )
-            distance_to_next_cell_center = pygame.Vector2(self.rect.center).distance_to(
-                target_pos_pixel
-            )
-
-            if distance_to_next_cell_center < self.speed:
-                self.rect.center = target_pos_pixel
-                self.path.pop(0)
-                path_segment_completed = True
-
-        # Always recalculate path if stuck or path is empty
-        if not self.path:
+        # Recompute path only if needed (e.g., path is empty or a new goal is set)
+        if not self.path or current_grid_pos == goal:
             self.path = self.bfs(current_grid_pos, goal, walls)
+            if not self.path:  # If no path is found, pick a random direction to move
 
-        if self.path:
-            next_cell_grid = self.path[0]
-            target_pos_pixel = (
-                next_cell_grid[0] * CELL_SIZE + CELL_SIZE // 2,
-                next_cell_grid[1] * CELL_SIZE + CELL_SIZE // 2 + SCORE_AREA_HEIGHT,
-            )
+                # Logic to move in a random direction and avoid walls
+                valid_moves = []
+                for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nx, ny = current_grid_pos[0] + dx, current_grid_pos[1] + dy
+                    if (nx, ny) not in wall_positions:
+                        valid_moves.append((nx, ny))
+                if valid_moves:
+                    self.path.append(random.choice(valid_moves))
+                else:
+                    return
 
-            move_vector = pygame.Vector2(target_pos_pixel) - pygame.Vector2(
-                self.rect.center
-            )
-            distance = move_vector.length()
+        # If still no path, something is wrong, so stop
+        if not self.path:
+            return
 
-            if distance > 0:
-                if distance > self.speed:
-                    move_vector.normalize_ip()
-                    move_vector *= self.speed
-                # Calculate intended new position
-                new_x = self.rect.x + move_vector.x
-                new_y = self.rect.y + move_vector.y
-                # Create a test rect for collision
-                test_rect = self.rect.copy()
-                test_rect.x = new_x
-                test_rect.y = new_y
-                # Only move if no wall collision
-                if not any(test_rect.colliderect(w.rect) for w in walls):
-                    self.rect.x = new_x
-                    self.rect.y = new_y
+        next_cell = self.path[0]
+        target_px = (
+            next_cell[0] * CELL_SIZE + CELL_SIZE // 2,
+            next_cell[1] * CELL_SIZE + CELL_SIZE // 2 + SCORE_AREA_HEIGHT,
+        )
+
+        target_vec = pygame.Vector2(target_px)
+        move_vec = target_vec - self.pos
+        dist = move_vec.length()
+
+        # This section ensures that once a cell is reached, the ghost moves to the next cell in the path.
+        if dist < self.speed:
+            self.pos = pygame.Vector2(target_px)
+            self.rect.center = (int(self.pos.x), int(self.pos.y))
+            self.path.pop(0)
+            if not self.path:
+                return  # Stop if the path is complete
+        else:
+            if dist > 0:
+                move_vec.scale_to_length(self.speed)
+            self.pos += move_vec
+            self.rect.center = (int(self.pos.x), int(self.pos.y))

@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Read the CSV file into a DataFrame
-df = pd.read_csv("runs/RL_PacMan/2025-08-13_23-30-45-dqn_run/metrics.csv")
+df = pd.read_csv("runs/RL_PacMan/2025-08-15_10-53-21-dqn_standard/metrics.csv")
 
 # Display the first 5 rows of the DataFrame
 print(df.head().to_markdown(index=False, numalign="left", stralign="left"))
@@ -35,7 +35,7 @@ axes[2].set_ylabel("Loss")
 axes[2].grid(True)
 
 # Plot moving average reward vs episode
-axes[3].plot(df["episode"], df["ma_reward_20"])
+axes[3].plot(df["episode"], df["ma_reward_50"])
 axes[3].set_title("Moving Average Reward (20 episodes) vs. Episode")
 axes[3].set_xlabel("Episode")
 axes[3].set_ylabel("Moving Average Reward")
