@@ -7,7 +7,7 @@ import sys
 # Import game entities
 from entities import Wall, Pellet, Pacman, Ghost
 
-# Import game layouts and sprite configurations (assuming these are separate files)
+# Import game layouts and sprite configurations
 from game_layouts import LAYOUTS
 from sprite_configs import PACMAN_PATHS, GHOST_PATHS
 
@@ -18,9 +18,17 @@ GRID_HEIGHT = 31
 SCORE_AREA_HEIGHT = 50
 SCREEN_WIDTH = CELL_SIZE * GRID_WIDTH
 SCREEN_HEIGHT = CELL_SIZE * GRID_HEIGHT + SCORE_AREA_HEIGHT
-FPS = 60  # Main game speed control
+FPS = 120  # Main game speed control
 
 HIGHSCORE_FILE = "highscore.txt"
+
+# === RL reward constants (tunable) ===
+STEP_PENALTY = -0.02
+PELLET_R = 1.0
+WIN_BONUS = 1000.0  # Increased from 300.0 for a stronger incentive
+DEATH_PENALTY = -1000.0  # Increased from -200.0 for a stronger penalty
+SHAPING_SCALE = 0.002  # tiny weight for distance shaping
+STUCK_LIMIT = 400  # steps since last pellet before early terminate
 
 # Colors (Centralized here)
 BLACK = (0, 0, 0)
@@ -28,34 +36,99 @@ WHITE = (255, 255, 255)
 GREEN = (0, 200, 0)
 RED = (255, 0, 0)
 
+# Directions mapping for the agent's actions
+ACTION_DIRECTIONS = {
+    0: pygame.Vector2(0, -1),  # Up
+    1: pygame.Vector2(0, 1),  # Down
+    2: pygame.Vector2(-1, 0),  # Left
+    3: pygame.Vector2(1, 0),  # Right
+}
+
 
 class GameManager:
-    def __init__(self):
+    def __init__(self, headless=True):
+        """
+        Initializes the game manager.
+        :param headless: If True, runs without a visible display, suitable for training.
+        """
+        self.headless = headless
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-        pygame.display.set_caption("Pacman Enhanced")
-        self.clock = pygame.time.Clock()
+        if self.headless:
+            # Create a dummy display surface to allow sprites to be loaded
+            pygame.display.set_mode((1, 1), pygame.HIDDEN)
+        else:
+            self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+            pygame.display.set_caption("PyPacman")
 
-        self.font = pygame.font.SysFont("Arial", 24, bold=True)
-        self.win_font = pygame.font.SysFont("Arial", 72, bold=True)
-
-        self.score = 0
-        self.high_score = self._load_highscore()
-
-        self.walls = pygame.sprite.Group()
-        self.pellets = pygame.sprite.Group()
         self.pacman = None
         self.ghosts = pygame.sprite.Group()
-
+        self.pellets = pygame.sprite.Group()
+        self.walls = pygame.sprite.Group()
+        self.score = 0
+        self.lives = 3
         self.game_over = False
-        self.game_won = False
+        self.has_won = False
+        self.current_layout = LAYOUTS[1]
+        self.high_score = self._load_highscore()
+        self.font = pygame.font.Font(None, 36)
+        self.win_font = pygame.font.Font(None, 72)
+        self.FPS = FPS
+
+        # Initialize exploration bookkeeping variables before loading the layout
+        self.visited = set()
+        self.steps_since_last_pellet = 0
 
         self._load_game_layout()
 
-        # Group for drawing all static elements (walls, pellets)
-        self.all_sprites_except_pacman_ghosts = pygame.sprite.Group(
-            *self.walls, *self.pellets
-        )
+    def _load_game_layout(self):
+        """
+        Loads the game layout, setting up the board, pacman, and ghosts.
+        """
+        layout_data = self.current_layout
+
+        # Reset game elements by clearing sprite groups
+        self.walls.empty()
+        self.pellets.empty()
+        self.ghosts.empty()
+        self.pacman = None
+
+        pacman_pos = None
+        ghost_starts = []
+        pellet_positions = []
+
+        for y, row in enumerate(layout_data):
+            for x, char in enumerate(row):
+                if char == "#":
+                    self.walls.add(
+                        Wall(x * CELL_SIZE, y * CELL_SIZE + SCORE_AREA_HEIGHT)
+                    )
+                elif char == "P":
+                    pacman_pos = (x * CELL_SIZE, y * CELL_SIZE + SCORE_AREA_HEIGHT)
+                elif char == "G":
+                    ghost_starts.append(
+                        (x * CELL_SIZE, y * CELL_SIZE + SCORE_AREA_HEIGHT)
+                    )
+                elif char == ".":
+                    pellet_positions.append(
+                        (x * CELL_SIZE, y * CELL_SIZE + SCORE_AREA_HEIGHT)
+                    )
+
+        # Instantiate entities
+        if pacman_pos:
+            self.pacman = Pacman(pacman_pos[0], pacman_pos[1], PACMAN_PATHS)
+        for i, pos in enumerate(ghost_starts):
+            self.ghosts.add(Ghost(pos[0], pos[1], f"ghost_{i}", GHOST_PATHS, FPS))
+        for pos in pellet_positions:
+            self.pellets.add(Pellet(pos[0], pos[1]))
+        self.initial_pellet_count = len(self.pellets)
+
+        # Reset all ghosts to ensure they start fresh
+        for ghost in self.ghosts:
+            ghost.reset()
+        # The following lines are removed from this method because they are
+        # initialized in __init__ and will be reset in the `reset()` method.
+        # self.visited.clear()
+        # self.steps_since_last_pellet = 0
 
     def _load_highscore(self):
         """Loads the high score from a file."""
@@ -75,62 +148,168 @@ class GameManager:
         except IOError:
             print(f"Error: Could not save high score to {HIGHSCORE_FILE}")
 
-    def _load_game_layout(self):
-        """Loads the game layout from a randomly selected map."""
-        selected_layout = LAYOUTS[10]
-        # selected_layout = random.choice(LAYOUTS)
-        ghost_types = ["blinky", "pinky", "inky", "clyde"]
-        ghost_count = 0
-        MAX_GHOSTS = 5
+    def reset(self):
+        """
+        Resets the game state to the beginning of a new episode.
+        """
+        self.score = 0
+        self.lives = 3
+        self.game_over = False
+        self.has_won = False
 
-        for row_idx, row in enumerate(selected_layout):
-            for col_idx, cell in enumerate(row):
-                x = col_idx * CELL_SIZE
-                y = row_idx * CELL_SIZE + SCORE_AREA_HEIGHT
-                if cell == "#":
-                    self.walls.add(Wall(x, y))
-                elif cell == ".":
-                    self.pellets.add(Pellet(x, y))
-                elif cell == "P":
-                    self.pacman = Pacman(x, y, PACMAN_PATHS)
-                elif cell == "G" and ghost_count < MAX_GHOSTS:
-                    ghost_type = ghost_types[ghost_count % len(ghost_types)]
-                    self.ghosts.add(
-                        Ghost(x, y, ghost_type, GHOST_PATHS, FPS)
-                    )  # Pass FPS to Ghost
-                    ghost_count += 1
+        # Reset exploration bookkeeping variables
+        self.visited.clear()
+        self.steps_since_last_pellet = 0
 
-    def _handle_input(self):
-        """Handles user input events."""
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                self.running = False
-        self.keys = pygame.key.get_pressed()
+        self._load_game_layout()
 
-    def _update_game_state(self):
-        """Updates all game objects and checks for collisions/win conditions."""
-        if not self.game_over and not self.game_won:
-            self.pacman.update(self.keys, self.walls)
+    # Add to GameManager
+    def get_grid(self, px=None, py=None):
+        # integer grid coords for pacman center
+        if px is None or py is None:
+            px = self.pacman.rect.centerx // CELL_SIZE
+            py = (self.pacman.rect.centery - SCORE_AREA_HEIGHT) // CELL_SIZE
 
-            for ghost in self.ghosts:
-                ghost.update(self.walls, self.pacman, FPS)  # Pass FPS to ghost update
+        W, H = GRID_WIDTH, GRID_HEIGHT
+        pellets = [[0] * W for _ in range(H)]
+        walls = [[0] * W for _ in range(H)]
+        ghosts = [[0] * W for _ in range(H)]
 
-            collided_pellets = pygame.sprite.spritecollide(
-                self.pacman, self.pellets, True
+        for p in self.pellets:
+            x = p.rect.centerx // CELL_SIZE
+            y = (p.rect.centery - SCORE_AREA_HEIGHT) // CELL_SIZE
+            if 0 <= x < W and 0 <= y < H:
+                pellets[y][x] = 1
+
+        for w in self.walls:
+            x = w.rect.x // CELL_SIZE
+            y = (w.rect.y - SCORE_AREA_HEIGHT) // CELL_SIZE
+            if 0 <= x < W and 0 <= y < H:
+                walls[y][x] = 1
+
+        for g in self.ghosts:
+            x = g.rect.centerx // CELL_SIZE
+            y = (g.rect.centery - SCORE_AREA_HEIGHT) // CELL_SIZE
+            if 0 <= x < W and 0 <= y < H:
+                ghosts[y][x] = 1
+
+        return pellets, walls, ghosts, (px, py)
+
+    def crop_egocentric(self, radius=3):
+        pellets, walls, ghosts, (px, py) = self.get_grid()
+        patch = []
+        for ch in (pellets, walls, ghosts):
+            band = []
+            for dy in range(-radius, radius + 1):
+                row = []
+                for dx in range(-radius, radius + 1):
+                    x, y = px + dx, py + dy
+                    val = 0
+                    if 0 <= y < GRID_HEIGHT and 0 <= x < GRID_WIDTH:
+                        val = ch[y][x]
+                    row.append(val)
+                band.extend(row)
+            patch.extend(band)  # flatten channels
+        return patch  # length = 3 * (2r+1)^2
+
+    # --- Helper: nearest pellet distance (pixel manhattan) ---
+    def nearest_pellet_distance(self):
+        px, py = self.pacman.rect.centerx, self.pacman.rect.centery
+        if not self.pellets:
+            return 0
+        return min(
+            abs(px - p.rect.centerx) + abs(py - p.rect.centery) for p in self.pellets
+        )
+
+    # --- Helper: legal actions from current pacman cell ---
+    def legal_actions(self):
+        acts = []
+        for a, direction in ACTION_DIRECTIONS.items():
+            test = self.pacman.rect.move(
+                direction.x * self.pacman.speed, direction.y * self.pacman.speed
             )
-            self.score += len(collided_pellets) * 10
+            if not any(test.colliderect(w.rect) for w in self.walls):
+                acts.append(a)
+        return acts
 
-            if not self.pellets:
-                self.game_won = True
-                self.game_over = True
+    def step(self, action):
+        """
+        Takes an action and returns the next state, reward, and done flag.
+        """
+        # Potential-based shaping (pre-move potential)
+        prev_phi = -self.nearest_pellet_distance()
 
-            if pygame.sprite.spritecollideany(self.pacman, self.ghosts):
-                self.game_over = True
+        # Get the direction from the action
+        direction = ACTION_DIRECTIONS.get(action)
+        if direction:
+            # Update Pacman's next direction
+            self.pacman.next_direction = direction
 
-    def _draw_elements(self):
-        """Draws all game elements to the screen."""
+        # Update Pacman's position
+        self.pacman.update({}, self.walls)
+
+        # Update Ghosts' positions
+        for ghost in self.ghosts:
+            ghost.update(self.walls, self.pacman, FPS)
+
+        # Calculate reward
+        reward = STEP_PENALTY
+        done = False
+
+        # Check for pellet collision
+        pellets_eaten = pygame.sprite.spritecollide(self.pacman, self.pellets, True)
+        self.score += len(pellets_eaten) * 10  # keep UI scoring
+        if len(pellets_eaten) > 0:
+            self.steps_since_last_pellet = 0
+        reward += len(pellets_eaten) * PELLET_R
+
+        if not self.pellets:
+            reward += WIN_BONUS
+            done = True
+            self.has_won = True
+            if self.score > self.high_score:
+                self.high_score = self.score
+                self._save_highscore()
+
+        # Check for ghost collision
+        if pygame.sprite.spritecollideany(self.pacman, self.ghosts):
+            reward += DEATH_PENALTY
+            done = True
+            self.game_over = True
+            if self.score > self.high_score:
+                self.high_score = self.score
+                self._save_highscore()
+        # Novelty bonus for visiting new cells
+        cell = (
+            self.pacman.rect.centerx // CELL_SIZE,
+            (self.pacman.rect.centery - SCORE_AREA_HEIGHT) // CELL_SIZE,
+        )
+        if cell not in self.visited:
+            self.visited.add(cell)
+            reward += 0.05
+
+        # Potential-based shaping (post-move)
+        new_phi = -self.nearest_pellet_distance()
+        gamma = 0.99
+        reward += (new_phi - gamma * prev_phi) * SHAPING_SCALE
+
+        # Early termination if stuck too long without progress
+        self.steps_since_last_pellet += 1
+        if self.steps_since_last_pellet >= STUCK_LIMIT and not done:
+            done = True
+            reward += -5.0  # mild penalty for stalling
+
+        return self.pacman, reward, done
+
+    def display(self):
+        """Draws the game state to the screen."""
         self.screen.fill(BLACK)
+        self.walls.draw(self.screen)
+        self.pellets.draw(self.screen)
+        self.pacman.draw(self.screen)
+        self.ghosts.draw(self.screen)
 
+        # Draw the score and high score
         score_text = self.font.render(f"Score: {self.score}", True, WHITE)
         high_score_text = self.font.render(
             f"High Score: {self.high_score}", True, WHITE
@@ -148,17 +327,8 @@ class GameManager:
             2,
         )
 
-        self.all_sprites_except_pacman_ghosts.draw(self.screen)
-        self.pacman.draw(self.screen)
-        for ghost in self.ghosts:
-            ghost.draw(self.screen)
-
         if self.game_over:
-            if self.score > self.high_score:
-                self.high_score = self.score
-                self._save_highscore()
-
-            if self.game_won:
+            if self.has_won:
                 win_text = self.win_font.render("YOU WIN!", True, GREEN)
                 text_rect = win_text.get_rect(
                     center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
@@ -172,14 +342,3 @@ class GameManager:
                 self.screen.blit(game_over_text, text_rect)
 
         pygame.display.flip()
-
-    def run(self):
-        """Main game loop."""
-        self.running = True
-        while self.running:
-            self._handle_input()
-            self._update_game_state()
-            self._draw_elements()
-            self.clock.tick(FPS)
-        pygame.quit()
-        sys.exit()
