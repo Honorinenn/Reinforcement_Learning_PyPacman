@@ -1,48 +1,66 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import os
 
-# Read the CSV file into a DataFrame
-df = pd.read_csv("runs/RL_PacMan/2025-08-15_10-53-21-dqn_standard/metrics.csv")
 
-# Display the first 5 rows of the DataFrame
-print(df.head().to_markdown(index=False, numalign="left", stralign="left"))
+def get_metrics_files(folder):
+    metrics_files = []
+    for root, dirs, files in os.walk(folder):
+        for file in files:
+            if file == "metrics.csv":
+                metrics_files.append(os.path.join(root, file))
+    return metrics_files
 
-# Display information about the DataFrame
-print(df.info())
 
-# Create a figure and axes for the plots
-fig, axes = plt.subplots(4, 1, figsize=(10, 20))
-
-# Plot epsilon vs episode
-axes[0].plot(df["episode"], df["epsilon"])
-axes[0].set_title("Epsilon vs. Episode")
-axes[0].set_xlabel("Episode")
-axes[0].set_ylabel("Epsilon")
-axes[0].grid(True)
-
-# Plot reward vs episode
-axes[1].plot(df["episode"], df["reward"])
-axes[1].set_title("Reward vs. Episode")
-axes[1].set_xlabel("Episode")
-axes[1].set_ylabel("Reward")
-axes[1].grid(True)
-
-# Plot loss vs episode
-axes[2].plot(df["episode"], df["loss"])
-axes[2].set_title("Loss vs. Episode")
-axes[2].set_xlabel("Episode")
-axes[2].set_ylabel("Loss")
-axes[2].grid(True)
-
-# Plot moving average reward vs episode
-axes[3].plot(df["episode"], df["ma_reward_50"])
-axes[3].set_title("Moving Average Reward (20 episodes) vs. Episode")
-axes[3].set_xlabel("Episode")
-axes[3].set_ylabel("Moving Average Reward")
-axes[3].grid(True)
-
-# Adjust layout to prevent titles and labels from overlapping
-plt.tight_layout()
-
-# Save the plot to a file
-fig.savefig("dqn_metrics_plots.png")
+folder = "runs/RL_PacMan"
+metrics_files = get_metrics_files(folder)
+if not metrics_files:
+    print("No metrics.csv files found.")
+else:
+    for metrics_path in metrics_files:
+        print(f"\n--- {metrics_path} ---")
+        df = pd.read_csv(metrics_path)
+        print(df.head().to_markdown(index=False, numalign="left", stralign="left"))
+        print(df.info())
+        # Prepare output directory
+        out_dir = os.path.dirname(metrics_path)
+        # Epsilon plot
+        plt.figure(figsize=(10, 5))
+        plt.plot(df["episode"], df["epsilon"])
+        plt.title("Epsilon vs. Episode")
+        plt.xlabel("Episode")
+        plt.ylabel("Epsilon")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, "epsilon.png"))
+        plt.close()
+        # Reward plot
+        plt.figure(figsize=(10, 5))
+        plt.plot(df["episode"], df["reward"])
+        plt.title("Reward vs. Episode")
+        plt.xlabel("Episode")
+        plt.ylabel("Reward")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, "reward.png"))
+        plt.close()
+        # Loss plot
+        plt.figure(figsize=(10, 5))
+        plt.plot(df["episode"], df["loss"])
+        plt.title("Loss vs. Episode")
+        plt.xlabel("Episode")
+        plt.ylabel("Loss")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, "loss.png"))
+        plt.close()
+        # Moving Average Reward plot
+        plt.figure(figsize=(10, 5))
+        plt.plot(df["episode"], df["ma_reward_50"])
+        plt.title("Moving Average Reward (20 episodes) vs. Episode")
+        plt.xlabel("Episode")
+        plt.ylabel("Moving Average Reward")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(os.path.join(out_dir, "ma_reward_50.png"))
+        plt.close()

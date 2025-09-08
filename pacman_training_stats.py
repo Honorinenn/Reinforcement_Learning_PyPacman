@@ -91,6 +91,7 @@ def main():
         return
 
     print(f"Found {len(metrics_files)} metrics.csv files in '{folder}'.\n")
+    explanations_log = []
     for file_path in metrics_files:
         data = load_csv(file_path)
         if data is None:
@@ -103,6 +104,16 @@ def main():
         for explanation in explanations:
             print(f"  - {explanation}")
         print()
+        explanations_log.append(
+            f"File: {file_path}\n"
+            + "\n".join([f"  {key}: {value}" for key, value in stats.items()])
+            + "\n"
+            + "\n".join([f"  - {ex}" for ex in explanations])
+            + "\n"
+        )
+    # Save explanations to file
+    with open("training_stats_explanations.txt", "w") as f:
+        f.write("\n".join(explanations_log))
 
 
 if __name__ == "__main__":

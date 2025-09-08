@@ -1,0 +1,35 @@
+File: runs/RL_PacMan/2025-08-27_21-08-46-dqn_dueling_exp2/metrics.csv
+  average_reward: -165.58467992399997
+  max_reward: 36.593680000000106
+  min_reward: -201.88516
+  average_steps: 651.921
+  total_episodes: 5000
+  - Average reward: -165.58 - Indicates the agent's typical performance.
+  - Max reward: 36.59 - Highest reward achieved in training.
+  - Min reward: -201.89 - Lowest reward, showing worst-case performance.
+  - Total episodes: 5000 - Number of training runs.
+  - Average steps: 651.92 - Average steps per episode.
+
+File: runs/RL_PacMan/2025-09-02_17-46-36-dqn_standard_exp3/metrics.csv
+  average_reward: -169.71424522400002
+  max_reward: 36.44040000000028
+  min_reward: -206.05822
+  average_steps: 326.447
+  total_episodes: 5000
+  - Average reward: -169.71 - Indicates the agent's typical performance.
+  - Max reward: 36.44 - Highest reward achieved in training.
+  - Min reward: -206.06 - Lowest reward, showing worst-case performance.
+  - Total episodes: 5000 - Number of training runs.
+  - Average steps: 326.45 - Average steps per episode.
+
+File: runs/RL_PacMan/2025-08-26_23-18-43-dqn_conv_exp1/metrics.csv
+  average_reward: -162.43159228000002
+  max_reward: 364.19816000000026
+  min_reward: -200.50448000000003
+  average_steps: 397.0428
+  total_episodes: 5000
+  - Average reward: -162.43 - Indicates the agent's typical performance.
+  - Max reward: 364.20 - Highest reward achieved in training.
+  - Min reward: -200.50 - Lowest reward, showing worst-case performance.
+  - Total episodes: 5000 - Number of training runs.
+  - Average steps: 397.04 - Average steps per episode.
